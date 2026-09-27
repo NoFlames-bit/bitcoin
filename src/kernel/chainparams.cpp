@@ -145,15 +145,14 @@ public:
         // Long coinbase maturity extends RDTS. RDTS rules are unchanged.
         // Four periods, from the deployed 45-day rule through RDTS expiry.
         // At the 10-minute target, 45 days is 6,480 blocks and ends at the
-        // height Knots 29.4.2 already releases (979920). The span from there
-        // to 1 September 2027 is about 312–319 days. The next two periods are
-        // the nearest distinct lengths ending in 0 around an even split of
-        // that span: 100 days, then 110 days. The last period is however many
-        // blocks remain until RDTS expiry, about 102–109 days.
+        // height Knots 29.4.2 already releases (979920). The next two periods
+        // are 105 days each: the same length, easy to remember, and not the
+        // ordinary 100-block maturity. The last period is however many blocks
+        // remain until RDTS expiry, about 102–109 days.
         constexpr int blocks_per_day{144};
         const int period1_end{973440 + 45 * blocks_per_day};  // 979920
-        const int period2_end{period1_end + 100 * blocks_per_day}; // 994320
-        const int period3_end{period2_end + 110 * blocks_per_day}; // 1010160
+        const int period2_end{period1_end + 105 * blocks_per_day}; // 995040
+        const int period3_end{period2_end + 105 * blocks_per_day}; // 1010160
         consensus.CoinbaseMaturityLongStartHeight = 973440;
         consensus.CoinbaseMaturityLongEnforceHeight = 973440;
         consensus.CoinbaseMaturityLongReleaseTime = consensus.RdtsExpiryTime;

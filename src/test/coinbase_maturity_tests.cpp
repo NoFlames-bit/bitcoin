@@ -83,22 +83,22 @@ BOOST_AUTO_TEST_CASE(long_maturity_schedules)
     }
 
     const auto& mainnet{main->GetConsensus()};
-    // 45 days, 100 days, 110 days, then whatever blocks remain until RDTS.
+    // 45 days, 105 days, 105 days, then whatever blocks remain until RDTS.
     // 144 blocks/day at the 10-minute target.
     BOOST_REQUIRE_EQUAL(mainnet.coinbase_maturity_long_periods.size(), 4);
     BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[0].start_height, 973440);
     BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[0].release_height, 979920);
     BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[1].start_height, 979920);
-    BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[1].release_height, 994320);
-    BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[2].start_height, 994320);
+    BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[1].release_height, 995040);
+    BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[2].start_height, 995040);
     BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[2].release_height, 1010160);
     BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[3].start_height, 1010160);
     BOOST_CHECK_EQUAL(mainnet.coinbase_maturity_long_periods[3].release_height, INT_MAX_);
     BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(979919, 0), 973440);
     BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(979920, 0), 979920);
-    BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(994319, 0), 979920);
-    BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(994320, 0), 994320);
-    BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(1010159, 0), 994320);
+    BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(995039, 0), 979920);
+    BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(995040, 0), 995040);
+    BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(1010159, 0), 995040);
     BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(1010160, mainnet.RdtsExpiryTime - 1), 1010160);
     BOOST_CHECK_EQUAL(mainnet.CoinbaseMaturityLongHeldFrom(2000000, mainnet.RdtsExpiryTime), INT_MAX_);
 

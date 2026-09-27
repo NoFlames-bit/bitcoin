@@ -6,8 +6,8 @@ RDTS is unchanged. This softfork adds four coinbase-maturity periods on top of i
 The periods use the 10-minute target (144 blocks per day). Lengths end in 0 or 5, except the last, which is however many blocks are left until RDTS expires:
 
 * 45 days, blocks 973440–979919, spendable from block 979920. This is the rule 29.4.2 already enforces.
-* 100 days, blocks 979920–994319, spendable from block 994320.
-* 110 days, blocks 994320–1010159, spendable from block 1010160.
+* 105 days, blocks 979920–995039, spendable from block 995040.
+* 105 days, blocks 995040–1010159, spendable from block 1010160.
 * The blocks from 1010160 on, spendable from the first block whose parent median time past has reached the RDTS expiry. That remainder is about 102–109 days.
 
 After a period releases, its coinbases need the ordinary 100 confirmations. Through block 979919 the rules match 29.4.2. Block 979920 is the first 29.4.2 could accept and this version reject: 29.4.2 would allow a spend of any coinbase from block 973440 on, and this version still holds coinbases from block 979920 on. Miners and nodes need to upgrade before that block, expected between the 17th and the 24th of October.
