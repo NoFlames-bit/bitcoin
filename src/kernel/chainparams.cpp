@@ -77,14 +77,20 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
 
-static void AddLongCoinbaseMaturityRevalidationDeployment(Consensus::Params& consensus)
+static void AddLongCoinbaseMaturityRevalidationDeployment(Consensus::Params& consensus, int anchor_height, int64_t anchor_mtp)
 {
-    // The rule is released by time, so the last height it applies to depends
-    // on the chain: every block from the enforce height on may need checking
+    // A node with no marker rewinds to the enforce height. With no stop, that
+    // rewind starts from whatever the tip is and the cost grows without bound.
+    // Median time past rises by at least one second every six blocks after
+    // the anchor, so the rule cannot apply past this height. On a chain that
+    // releases sooner, RewindForChainstateRevalidation stops at the last
+    // block the rule actually applies to.
+    const int stop_height{Consensus::LastHeightWithParentMtpBelow(anchor_height, anchor_mtp, consensus.CoinbaseMaturityLongReleaseTime)};
+    if (stop_height < consensus.CoinbaseMaturityLongEnforceHeight) return;
     consensus.chainstate_revalidation_deployments.push_back({
         .name = "long_coinbase_maturity",
         .start_height = consensus.CoinbaseMaturityLongEnforceHeight,
-        .stop_height = std::numeric_limits<int>::max(),
+        .stop_height = stop_height,
     });
 }
 
@@ -162,7 +168,9 @@ public:
             {period2_end, period3_end},
             {period3_end, std::numeric_limits<int>::max()},
         };
-        AddLongCoinbaseMaturityRevalidationDeployment(consensus);
+        // Checkpoint block 908765. Every chain this node will accept includes
+        // it, and its median time past is 1754416682.
+        AddLongCoinbaseMaturityRevalidationDeployment(consensus, /*anchor_height=*/908765, /*anchor_mtp=*/1754416682);
 
         consensus.nMinimumChainWork = uint256{"00000000000000000000000000000000000000013e00277374c9f9eeadc70200"};
         consensus.defaultAssumeValid = uint256{"0000000000000078ed1e20cac1acf78df6d1060c78059fb6331e17141c881fc8"}; // 964264
@@ -455,7 +463,9 @@ public:
             {period2_end, period3_end},
             {period3_end, std::numeric_limits<int>::max()},
         };
-        AddLongCoinbaseMaturityRevalidationDeployment(consensus);
+        // Genesis median time past is the genesis timestamp. The block is
+        // created just below; keep this anchor equal to that nTime.
+        AddLongCoinbaseMaturityRevalidationDeployment(consensus, /*anchor_height=*/0, /*anchor_mtp=*/1714777860);
 
         consensus.nMinimumChainWork = uint256{"0000000000000000000000000000000000000000000001d6dce8651b6094e4c1"};
         consensus.defaultAssumeValid = uint256{"0000000000003ed4f08dbdf6f7d6b271a6bcffce25675cb40aa9fa43179a89f3"}; // 72600
@@ -728,7 +738,9 @@ public:
                 *opts.coinbase_maturity_long_start_height,
                 std::numeric_limits<int>::max(),
             }};
-            AddLongCoinbaseMaturityRevalidationDeployment(consensus);
+            // Regtest genesis timestamp. The block is created just below;
+            // keep this anchor equal to that nTime.
+            AddLongCoinbaseMaturityRevalidationDeployment(consensus, /*anchor_height=*/0, /*anchor_mtp=*/1296688602);
         }
 
         for (const auto& [deployment_pos, version_bits_params] : opts.version_bits_parameters) {

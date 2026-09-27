@@ -326,6 +326,26 @@ struct Params {
     }
 };
 
+/**
+ * Last height at which a block can still have a parent median time past
+ * below `until_mtp`, given a block at `anchor_height` whose median time
+ * past is `anchor_mtp`.
+ *
+ * A block timestamp must be greater than the previous median time past, so
+ * that median rises by at least one second every six blocks. The block at
+ * the returned height can still see a parent median of `until_mtp - 1`.
+ */
+inline int LastHeightWithParentMtpBelow(int anchor_height, int64_t anchor_mtp, int64_t until_mtp)
+{
+    if (until_mtp <= anchor_mtp) return anchor_height;
+    const int64_t seconds{until_mtp - anchor_mtp};
+    constexpr int64_t blocks_per_second{6};
+    if (seconds > (static_cast<int64_t>(std::numeric_limits<int>::max()) - anchor_height) / blocks_per_second) {
+        return std::numeric_limits<int>::max();
+    }
+    return anchor_height + static_cast<int>(seconds * blocks_per_second);
+}
+
 } // namespace Consensus
 
 #endif // BITCOIN_CONSENSUS_PARAMS_H

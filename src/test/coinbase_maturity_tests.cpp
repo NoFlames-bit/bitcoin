@@ -79,8 +79,17 @@ BOOST_AUTO_TEST_CASE(long_maturity_schedules)
         const auto& deployment{consensus.chainstate_revalidation_deployments.front()};
         BOOST_CHECK_EQUAL(deployment.name, "long_coinbase_maturity");
         BOOST_CHECK_EQUAL(deployment.start_height, consensus.CoinbaseMaturityLongEnforceHeight);
-        BOOST_CHECK_EQUAL(deployment.stop_height, INT_MAX_);
+        // Finite, and after the enforce height: a missing stop would rewind a
+        // late upgrade from whatever its tip is.
+        BOOST_CHECK_GT(deployment.stop_height, consensus.CoinbaseMaturityLongEnforceHeight);
+        BOOST_CHECK_LT(deployment.stop_height, INT_MAX_);
     }
+
+    // Checkpoint block 908765, median time past 1754416682.
+    BOOST_CHECK_EQUAL(main->GetConsensus().chainstate_revalidation_deployments.front().stop_height,
+                      Consensus::LastHeightWithParentMtpBelow(908765, 1754416682, main->GetConsensus().RdtsExpiryTime));
+    BOOST_CHECK_EQUAL(testnet4->GetConsensus().chainstate_revalidation_deployments.front().stop_height,
+                      Consensus::LastHeightWithParentMtpBelow(0, testnet4->GenesisBlock().nTime, testnet4->GetConsensus().RdtsExpiryTime));
 
     const auto& mainnet{main->GetConsensus()};
     // 45 days, 105 days, 105 days, then whatever blocks remain until RDTS.
@@ -127,11 +136,32 @@ BOOST_AUTO_TEST_CASE(long_maturity_schedules)
     BOOST_CHECK(consensus.CoinbaseMaturityLongActiveAt(1000000, 4999));
     BOOST_CHECK(!consensus.CoinbaseMaturityLongActiveAt(1000000, 5000));
     BOOST_CHECK_EQUAL(consensus.CoinbaseMaturityLongHeldFrom(20, 4999), 10);
-    BOOST_REQUIRE_EQUAL(consensus.chainstate_revalidation_deployments.size(), 1);
-    const auto& deployment{consensus.chainstate_revalidation_deployments.front()};
+    // Release is before the genesis median time past, so no block on this
+    // chain can be under the rule and there is nothing to rewind.
+    BOOST_CHECK(consensus.chainstate_revalidation_deployments.empty());
+
+    CChainParams::RegTestOptions future;
+    future.coinbase_maturity_long_start_height = 10;
+    future.coinbase_maturity_long_enforce_height = 20;
+    future.coinbase_maturity_long_release_time = regtest->GenesisBlock().nTime + 1000;
+    const auto future_params{CChainParams::RegTest(future)};
+    const auto& future_consensus{future_params->GetConsensus()};
+    BOOST_REQUIRE_EQUAL(future_consensus.chainstate_revalidation_deployments.size(), 1);
+    const auto& deployment{future_consensus.chainstate_revalidation_deployments.front()};
     BOOST_CHECK_EQUAL(deployment.name, "long_coinbase_maturity");
     BOOST_CHECK_EQUAL(deployment.start_height, 20);
-    BOOST_CHECK_EQUAL(deployment.stop_height, INT_MAX_);
+    BOOST_CHECK_EQUAL(deployment.stop_height, Consensus::LastHeightWithParentMtpBelow(0, regtest->GenesisBlock().nTime, future.coinbase_maturity_long_release_time));
+    BOOST_CHECK_GT(deployment.stop_height, deployment.start_height);
+}
+
+BOOST_AUTO_TEST_CASE(mtp_bound_on_revalidation_stop)
+{
+    constexpr int INT_MAX_{std::numeric_limits<int>::max()};
+    BOOST_CHECK_EQUAL(Consensus::LastHeightWithParentMtpBelow(100, 1000, 1000), 100);
+    BOOST_CHECK_EQUAL(Consensus::LastHeightWithParentMtpBelow(100, 1000, 999), 100);
+    // One second of median time past takes six blocks. Three seconds is 18.
+    BOOST_CHECK_EQUAL(Consensus::LastHeightWithParentMtpBelow(100, 1000, 1003), 118);
+    BOOST_CHECK_EQUAL(Consensus::LastHeightWithParentMtpBelow(0, 0, int64_t{INT_MAX_}), INT_MAX_);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
