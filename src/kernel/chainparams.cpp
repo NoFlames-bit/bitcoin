@@ -142,10 +142,27 @@ public:
         // reaching ACTIVE, and that deployment has been removed.)
         consensus.RdtsExpiryTime = 1819756800; // September 1st, 2027 00:00 UTC
 
-        // Long coinbase maturity: held until RDTS expires
+        // Long coinbase maturity extends RDTS. RDTS rules are unchanged.
+        // Four periods, from the deployed 45-day rule through RDTS expiry.
+        // At the 10-minute target, 45 days is 6,480 blocks and ends at the
+        // height Knots 29.4.2 already releases (979920). The span from there
+        // to 1 September 2027 is about 312–319 days. The next two periods are
+        // the nearest distinct lengths ending in 0 around an even split of
+        // that span: 100 days, then 110 days. The last period is however many
+        // blocks remain until RDTS expiry, about 102–109 days.
+        constexpr int blocks_per_day{144};
+        const int period1_end{973440 + 45 * blocks_per_day};  // 979920
+        const int period2_end{period1_end + 100 * blocks_per_day}; // 994320
+        const int period3_end{period2_end + 110 * blocks_per_day}; // 1010160
         consensus.CoinbaseMaturityLongStartHeight = 973440;
         consensus.CoinbaseMaturityLongEnforceHeight = 973440;
         consensus.CoinbaseMaturityLongReleaseTime = consensus.RdtsExpiryTime;
+        consensus.coinbase_maturity_long_periods = {
+            {973440, period1_end},
+            {period1_end, period2_end},
+            {period2_end, period3_end},
+            {period3_end, std::numeric_limits<int>::max()},
+        };
         AddLongCoinbaseMaturityRevalidationDeployment(consensus);
 
         consensus.nMinimumChainWork = uint256{"00000000000000000000000000000000000000013e00277374c9f9eeadc70200"};
@@ -421,10 +438,24 @@ public:
         consensus.Blake2bHeight = 150308;
         consensus.RdtsExpiryTime = 1791903600; // October 13th, 2026 15:00:00 UTC
 
-        // Long coinbase maturity: held until RDTS expires
+        // Same four-period shape as mainnet, on this chain's deployed window.
+        // The first release stays at height 158111, which is where the previous
+        // rule let covered coinbases be spent. The next two periods are 5 and
+        // 10 days of target spacing (both end in 0 or 5). The last period is
+        // the blocks that remain until this chain's RDTS expiry.
+        constexpr int blocks_per_day{144};
+        const int period1_end{158111};
+        const int period2_end{period1_end + 5 * blocks_per_day};  // 158831
+        const int period3_end{period2_end + 10 * blocks_per_day}; // 160271
         consensus.CoinbaseMaturityLongStartHeight = 151406;
         consensus.CoinbaseMaturityLongEnforceHeight = 151550;
         consensus.CoinbaseMaturityLongReleaseTime = consensus.RdtsExpiryTime;
+        consensus.coinbase_maturity_long_periods = {
+            {151406, period1_end},
+            {period1_end, period2_end},
+            {period2_end, period3_end},
+            {period3_end, std::numeric_limits<int>::max()},
+        };
         AddLongCoinbaseMaturityRevalidationDeployment(consensus);
 
         consensus.nMinimumChainWork = uint256{"0000000000000000000000000000000000000000000001d6dce8651b6094e4c1"};
@@ -692,6 +723,12 @@ public:
             consensus.CoinbaseMaturityLongStartHeight = *opts.coinbase_maturity_long_start_height;
             consensus.CoinbaseMaturityLongEnforceHeight = *opts.coinbase_maturity_long_enforce_height;
             consensus.CoinbaseMaturityLongReleaseTime = *opts.coinbase_maturity_long_release_time;
+            // Regtest keeps one period, released by median time past, so tests
+            // can set the whole window with -testcoinbasematuritylong.
+            consensus.coinbase_maturity_long_periods = {{
+                *opts.coinbase_maturity_long_start_height,
+                std::numeric_limits<int>::max(),
+            }};
             AddLongCoinbaseMaturityRevalidationDeployment(consensus);
         }
 

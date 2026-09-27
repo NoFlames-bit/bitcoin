@@ -26,7 +26,7 @@ from test_framework.wallet import MiniWallet
 
 LONG_START_HEIGHT = 2
 LONG_ENFORCE_HEIGHT = LONG_START_HEIGHT + COINBASE_MATURITY + 2
-COINBASE_MATURITY_POLICY_TIME = 365 * 24 * 60 * 60
+RELEASE_DELAY = 365 * 24 * 60 * 60
 DEPLOYMENT = "long_coinbase_maturity"
 REJECT_REASON = "bad-txns-premature-spend-of-coinbase"
 
@@ -41,7 +41,7 @@ class LongCoinbaseMaturityReleaseTimeTest(BitcoinTestFramework):
         self.enable_wallet_if_possible()
         self.start_time = int(time.time())
         self.early_release_time = self.start_time + 10000
-        self.release_time = self.start_time + COINBASE_MATURITY_POLICY_TIME
+        self.release_time = self.start_time + RELEASE_DELAY
         self.timed_args = [
             f"-testcoinbasematuritylong={LONG_START_HEIGHT}:{LONG_ENFORCE_HEIGHT}:{self.release_time}",
             "-checkmempool=1",
@@ -130,10 +130,9 @@ class LongCoinbaseMaturityReleaseTimeTest(BitcoinTestFramework):
         assert node_timed.getblockheader(late_blocks[-1])["mediantime"] >= self.early_release_time
         self.assert_deployment(node_timed, active=True, release_time=self.release_time)
         self.assert_deployment(node_early, active=False, release_time=self.early_release_time)
-        # Coinbases minted at a median time past past the earlier release
-        # time: their year of policy hold outlasts the later release time
+        # A covered coinbase minted after the earlier release time. It stays
+        # held on node_timed until that node's later release time.
         late_coinbase_a = self.coinbase_of(node_timed, late_blocks[-2])
-        late_coinbase_b = self.coinbase_of(node_timed, late_blocks[-1])
         if self.is_wallet_compiled():
             wallet_block = self.generatetoaddress(node_timed, 1, node_timed.getnewaddress())[0]
             wallet_coinbase = self.coinbase_of(node_timed, wallet_block)
@@ -178,12 +177,16 @@ class LongCoinbaseMaturityReleaseTimeTest(BitcoinTestFramework):
         assert_equal(self.get_chaintip_status(node_early, bad_block.hash), "valid-fork")
 
         self.log.info("Bury the later coinbases under ordinary maturity")
-        self.generate(wallet, COINBASE_MATURITY)
+        # node_early has already released the rule, so it may keep a spend in
+        # its mempool that node_timed still rejects. Sync blocks only.
+        self.generate(wallet, COINBASE_MATURITY, sync_fun=self.no_op)
+        self.sync_blocks()
 
         self.log.info("The rule holds until the parent's median time past reaches the release time, however deep the coinbase is")
         self.set_time(self.release_time + 100)
         self.reconnect()
-        self.generate(wallet, 5)
+        self.generate(wallet, 5, sync_fun=self.no_op)
+        self.sync_blocks()
         self.assert_deployment(node_timed, active=True, release_time=self.release_time)
         assert_raises_rpc_error(-26, REJECT_REASON, node_timed.sendrawtransaction, held_spend["hex"])
         # Compact block relay announces a block before validating it, so keep
@@ -196,7 +199,7 @@ class LongCoinbaseMaturityReleaseTimeTest(BitcoinTestFramework):
         assert node_timed.getblockheader(release_block)["mediantime"] >= self.release_time
         self.assert_deployment(node_timed, active=False, release_time=self.release_time)
 
-        self.log.info("Once released, a covered coinbase a year old is relayed again")
+        self.log.info("Once released, a covered coinbase is relayed again")
         node_timed.sendrawtransaction(held_spend["hex"])
         assert_equal(node_timed.getrawmempool(), [held_spend["txid"]])
 
@@ -209,42 +212,21 @@ class LongCoinbaseMaturityReleaseTimeTest(BitcoinTestFramework):
         self.connect_nodes(0, 1)
         self.sync_blocks()
 
-        self.log.info("Policy holds a released coinbase until its year is up, while consensus accepts its spend")
+        self.log.info("After release, a later covered coinbase is relayed too")
         late_spend_a = wallet.create_self_transfer(utxo_to_spend=wallet.get_utxo(txid=late_coinbase_a))
-        assert_raises_rpc_error(-26, REJECT_REASON, node_timed.sendrawtransaction, late_spend_a["hex"])
         node_timed.sendrawtransaction(held_spend["hex"])
+        node_timed.sendrawtransaction(late_spend_a["hex"])
         block = self.create_next_block(node_timed, [held_spend["tx"], late_spend_a["tx"]])
         assert_equal(node_timed.submitblock(block.serialize().hex()), None)
         self.sync_blocks()
         for node in self.nodes:
             assert_equal(node.getbestblockhash(), block.hash)
         if self.is_wallet_compiled():
-            self.log.info("The wallet treats a coinbase as immature until its year is up")
-            assert_equal(node_timed.gettransaction(wallet_coinbase)["details"][0]["category"], "immature")
-            balances = node_timed.getbalances()["mine"]
-            assert_equal(balances["immature"], wallet_coinbase_value)
-            assert_equal(balances["trusted"], 0)
-
-        self.log.info("A year of median time past releases each coinbase on its own")
-        late_spend_b = wallet.create_self_transfer(utxo_to_spend=wallet.get_utxo(txid=late_coinbase_b))
-        self.set_time(self.early_release_time + COINBASE_MATURITY_POLICY_TIME + 1000)
-        self.reconnect()
-        self.generate(wallet, 5)
-        assert_raises_rpc_error(-26, REJECT_REASON, node_timed.sendrawtransaction, late_spend_b["hex"])
-        if self.is_wallet_compiled():
-            assert_equal(node_timed.gettransaction(wallet_coinbase)["details"][0]["category"], "immature")
-        self.generate(wallet, 1)
-        node_timed.sendrawtransaction(late_spend_b["hex"])
-        assert_equal(node_timed.getrawmempool(), [late_spend_b["txid"]])
-        if self.is_wallet_compiled():
+            self.log.info("The wallet treats the coinbase as mature once its period has released")
             assert_equal(node_timed.gettransaction(wallet_coinbase)["details"][0]["category"], "generate")
             balances = node_timed.getbalances()["mine"]
             assert_equal(balances["immature"], 0)
             assert_equal(balances["trusted"], wallet_coinbase_value)
-        self.generate(wallet, 1)
-        assert_equal(node_timed.getrawmempool(), [])
-        for node in self.nodes:
-            assert_equal(node.getbestblockhash(), node_timed.getbestblockhash())
 
 
 if __name__ == "__main__":

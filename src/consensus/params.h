@@ -153,29 +153,69 @@ struct Params {
      */
     int64_t RdtsExpiryTime{std::numeric_limits<int64_t>::min()};
     /**
-     * Long coinbase maturity temporary softfork.
+     * One period of the long coinbase maturity schedule.
      *
-     * From CoinbaseMaturityLongEnforceHeight, coinbases of height
-     * CoinbaseMaturityLongStartHeight or later cannot be spent at any depth
-     * until the rule is released. A block is past release when its parent's
-     * median-time-past has reached CoinbaseMaturityLongReleaseTime (the same
-     * boundary as RdtsExpiryTime), so the boundary is monotone along any
-     * chain and the rules for the next block are knowable in advance. Every
-     * other coinbase needs COINBASE_MATURITY as always.
+     * Coinbases of height start_height or later, and below the next period,
+     * stay unspendable until release_height. release_height of
+     * std::numeric_limits<int>::max() means the period ends when the parent
+     * block's median-time-past reaches CoinbaseMaturityLongReleaseTime.
+     */
+    struct CoinbaseMaturityPeriod {
+        int start_height{std::numeric_limits<int>::max()};
+        int release_height{std::numeric_limits<int>::max()};
+    };
+    /**
+     * Long coinbase maturity temporary softfork. It extends RDTS: every RDTS
+     * rule stays in force on its own schedule, and this rule adds coinbase
+     * maturity periods that end at RDTS expiry. Mainnet has four.
+     *
+     * From CoinbaseMaturityLongEnforceHeight, a covered coinbase cannot be
+     * spent at any depth until its period releases. Height releases are
+     * monotone, and the last period releases when the parent block's
+     * median-time-past reaches CoinbaseMaturityLongReleaseTime (the same
+     * boundary as RdtsExpiryTime), so the rules for the next block are
+     * knowable in advance. Reaching that time does not release a period
+     * before the first period's release height: that height is the last
+     * block the previous rule still held. Every coinbase the schedule does
+     * not cover needs COINBASE_MATURITY as always.
      *
      * The defaults leave the rule unscheduled.
      */
     int CoinbaseMaturityLongStartHeight{std::numeric_limits<int>::max()};
     int CoinbaseMaturityLongEnforceHeight{std::numeric_limits<int>::max()};
     int64_t CoinbaseMaturityLongReleaseTime{std::numeric_limits<int64_t>::min()};
+    std::vector<CoinbaseMaturityPeriod> coinbase_maturity_long_periods;
     bool CoinbaseMaturityLongScheduled() const
     {
-        return CoinbaseMaturityLongStartHeight != std::numeric_limits<int>::max();
+        return !coinbase_maturity_long_periods.empty();
     }
-    /** Whether the rule applies to a block at the given height whose parent has the given median-time-past. */
+    /** Earliest spending-block height at which a height-released period ends. */
+    int CoinbaseMaturityLongFirstReleaseHeight() const
+    {
+        int first{std::numeric_limits<int>::max()};
+        for (const CoinbaseMaturityPeriod& period : coinbase_maturity_long_periods) {
+            if (period.release_height < first) first = period.release_height;
+        }
+        return first;
+    }
+    bool CoinbaseMaturityPeriodReleased(const CoinbaseMaturityPeriod& period, int spend_height, int64_t mtp_prev) const
+    {
+        if (period.release_height != std::numeric_limits<int>::max() && spend_height >= period.release_height) {
+            return true;
+        }
+        if (mtp_prev < CoinbaseMaturityLongReleaseTime) return false;
+        // No release height: this period ends at the RDTS expiry time.
+        if (period.release_height == std::numeric_limits<int>::max()) return true;
+        // RDTS expiry also ends an earlier period once the first release
+        // height has passed. Releasing before that height would accept a
+        // spend the previous rule still rejects.
+        const int first_release{CoinbaseMaturityLongFirstReleaseHeight()};
+        return first_release != std::numeric_limits<int>::max() && spend_height >= first_release;
+    }
+    /** Whether any period still holds coinbases in a block at this height whose parent has this median-time-past. */
     bool CoinbaseMaturityLongActiveAt(int height, int64_t mtp_prev) const
     {
-        return height >= CoinbaseMaturityLongEnforceHeight && mtp_prev < CoinbaseMaturityLongReleaseTime;
+        return CoinbaseMaturityLongHeldFrom(height, mtp_prev) != std::numeric_limits<int>::max();
     }
     /**
      * First coinbase height that cannot be spent in a block at the given
@@ -184,7 +224,32 @@ struct Params {
      */
     int CoinbaseMaturityLongHeldFrom(int height, int64_t mtp_prev) const
     {
-        return CoinbaseMaturityLongActiveAt(height, mtp_prev) ? CoinbaseMaturityLongStartHeight : std::numeric_limits<int>::max();
+        if (coinbase_maturity_long_periods.empty() || height < CoinbaseMaturityLongEnforceHeight) {
+            return std::numeric_limits<int>::max();
+        }
+        int held{std::numeric_limits<int>::max()};
+        for (const CoinbaseMaturityPeriod& period : coinbase_maturity_long_periods) {
+            if (!CoinbaseMaturityPeriodReleased(period, height, mtp_prev) && period.start_height < held) {
+                held = period.start_height;
+            }
+        }
+        return held;
+    }
+    /**
+     * Release height of the period covering coin_height, or false when the
+     * schedule does not cover it. release_height_out is
+     * std::numeric_limits<int>::max() when that period ends at
+     * CoinbaseMaturityLongReleaseTime.
+     */
+    bool CoinbaseMaturityLongCovered(int coin_height, int& release_height_out) const
+    {
+        const CoinbaseMaturityPeriod* match{nullptr};
+        for (const CoinbaseMaturityPeriod& period : coinbase_maturity_long_periods) {
+            if (coin_height >= period.start_height) match = &period;
+        }
+        if (!match) return false;
+        release_height_out = match->release_height;
+        return true;
     }
     std::vector<ChainstateRevalidationDeployment> chainstate_revalidation_deployments;
     /** Don't warn about unknown BIP 9 activations below this height.

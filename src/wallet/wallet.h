@@ -551,7 +551,7 @@ public:
      * @return number of blocks to maturity for this transaction:
      *  0 : is not a coinbase transaction, or is a mature coinbase transaction
      * >0 : is a coinbase transaction which matures in this many blocks (an
-     *      estimate while the long coinbase maturity policy time is what holds it)
+     *      estimate while a time-released long maturity period is what holds it)
      */
     int GetTxBlocksToMaturity(const CWalletTx& wtx) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool IsTxImmatureCoinBase(const CWalletTx& wtx) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
