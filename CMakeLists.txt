@@ -26,13 +26,15 @@ get_directory_property(precious_variables CACHE_VARIABLES)
 #=============================
 # Project / Package metadata
 #=============================
-set(CLIENT_NAME "Bitcoin Core")
+set(CLIENT_NAME "Bitcoin Knots")
 set(CLIENT_VERSION_MAJOR 29)
 set(CLIENT_VERSION_MINOR 4)
-set(CLIENT_VERSION_BUILD 0)
+set(CLIENT_VERSION_BUILD 2)
 set(CLIENT_VERSION_RC 0)
 set(CLIENT_VERSION_IS_RELEASE "true")
-set(COPYRIGHT_YEAR "2025")
+set(COPYRIGHT_YEAR "2026")
+
+set(CLIENT_VERSION_SUFFIX ".knots20260508")
 
 # During the enabling of the CXX and CXXOBJ languages, we modify
 # CMake's compiler/linker invocation strings by appending the content
@@ -53,18 +55,18 @@ set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
 project(BitcoinCore
   VERSION ${CLIENT_VERSION_MAJOR}.${CLIENT_VERSION_MINOR}.${CLIENT_VERSION_BUILD}
   DESCRIPTION "Bitcoin client software"
-  HOMEPAGE_URL "https://bitcoincore.org/"
+  HOMEPAGE_URL "https://bitcoinknots.org/"
   LANGUAGES NONE
 )
 
-set(CLIENT_VERSION_STRING ${PROJECT_VERSION})
+set(CLIENT_VERSION_STRING ${PROJECT_VERSION}${CLIENT_VERSION_SUFFIX})
 if(CLIENT_VERSION_RC GREATER 0)
   string(APPEND CLIENT_VERSION_STRING "rc${CLIENT_VERSION_RC}")
 endif()
 
 set(COPYRIGHT_HOLDERS "The %s developers")
 set(COPYRIGHT_HOLDERS_FINAL "The ${CLIENT_NAME} developers")
-set(CLIENT_BUGREPORT "https://github.com/bitcoin/bitcoin/issues")
+set(CLIENT_BUGREPORT "https://github.com/bitcoinknots/bitcoin/issues")
 
 #=============================
 # Language setup
@@ -686,6 +688,17 @@ else()
   list(APPEND configure_warnings
     "Minimum required Python not found. Utils and rpcauth tests are disabled."
   )
+endif()
+
+if(BUILD_GUI)
+  find_program(RSVG_CONVERT rsvg-convert REQUIRED)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    find_program(IMAGEMAGICK_CONVERT NAMES magick convert)
+    find_program(PNG2ICNS png2icns REQUIRED)
+  else()
+    find_program(IMAGEMAGICK_CONVERT NAMES magick convert REQUIRED)
+    find_program(PNG2ICNS png2icns)
+  endif()
 endif()
 
 target_compile_definitions(core_interface INTERFACE ${DEPENDS_COMPILE_DEFINITIONS})

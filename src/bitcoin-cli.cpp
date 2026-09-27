@@ -292,7 +292,7 @@ public:
         if (!reply["error"].isNull()) return reply;
         const std::vector<UniValue>& nodes{reply["result"].getValues()};
         if (!nodes.empty() && nodes.at(0)["network"].isNull()) {
-            throw std::runtime_error("-addrinfo requires bitcoind server to be running v22.0 and up");
+            throw std::runtime_error("-addrinfo requires bitcoind server to be running v0.21.1.knots or newer");
         }
         // Count the number of peers known to our node, by network.
         std::array<uint64_t, NETWORKS.size()> counts{{}};
@@ -364,7 +364,12 @@ public:
         result.pushKV("connections", std::move(connections));
 
         result.pushKV("networks", batch[ID_NETWORKINFO]["result"]["networks"]);
-        result.pushKV("difficulty", batch[ID_BLOCKCHAININFO]["result"]["difficulty"]);
+        if (const UniValue& j{batch[ID_BLOCKCHAININFO]["result"]["difficulty"]}; !j.isNull()) {
+            result.pushKV("difficulty", j);
+        }
+        if (const UniValue& j{batch[ID_BLOCKCHAININFO]["result"]["difficulty_blake2b"]}; !j.isNull()) {
+            result.pushKV("difficulty_blake2b", j);
+        }
         result.pushKV("chain", UniValue(batch[ID_BLOCKCHAININFO]["result"]["chain"]));
         if (!batch[ID_WALLETINFO]["result"].isNull()) {
             result.pushKV("has_wallet", true);
@@ -1196,7 +1201,12 @@ static void ParseGetInfoResult(UniValue& result)
     }
 
     result_string += strprintf("Verification progress: %s%.4f%%\n", ibd_progress_bar, ibd_progress * 100);
-    result_string += strprintf("Difficulty: %s\n\n", result["difficulty"].getValStr());
+    if (const UniValue& j{result["difficulty"]}; !j.isNull()) {
+        result_string += strprintf("Difficulty: %s\n\n", j.getValStr());
+    }
+    if (const UniValue& j{result["difficulty_blake2b"]}; !j.isNull()) {
+        result_string += strprintf("Difficulty (BLAKE2b hashes): %s\n\n", j.getValStr());
+    }
 
     result_string += strprintf(
         "%sNetwork: in %s, out %s, total %s%s\n",
